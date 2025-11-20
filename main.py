@@ -96,21 +96,45 @@ def extract_features(img_bgr):
 # ----------------------------------------------------
 # 2. Rule-based Classifier
 # ----------------------------------------------------
-def classify_image(img: np.ndarray) -> str:
+def classify_patch_by_rules(img):
     """
     입력: BGR 이미지 (cv2.imread 결과)
     출력: "Good" 또는 "Ungood"
     """
 
-    #TODO: Rule-based 분류기 작성
+    f = extract_features(img_rgb)
 
+    tissue_ratio = f["tissue_ratio"]
+    mean_s = f["mean_s"]
+    mean_v = f["mean_v"]
+    morph_ratio = f["morph_ratio"]
+    dark_ratio = f["dark_ratio"]
+    bright_ratio = f["bright_ratio"]
+
+    # 1) 조직이 너무 적으면 Ungood
+    if tissue_ratio < 0.2:
+        return "Ungood"
+    
+    # 2) 조직이 너무 어둡거나 (괴사/덩어리) 너무 밝은 부분이 많으면 Ungood
+    if dark_ratio > 0.3 or bright_ratio > 0.3:
+        return "Ungood"
+
+    # 3) 색이 날아간 슬라이드라면 Ungood
+    if mean_s < 30 or mean_v > 200:
+        return "Ungood"
+
+    # 4) 모양이 이상한 조직의 비율이 높으면 Ungodd
+    if morph_ratio > 0.4:
+        return "Ungood"
+
+    # 위 조건에 해당하지 않으면 Good
     return "Good"
 
 # ===============================================
 
 
 # ----------------------------------------------------
-# 2. example/ 에서 example_label.csv랑 비교 → accuracy 계산
+# 3. example/ 에서 example_label.csv랑 비교 → accuracy 계산
 # ----------------------------------------------------
 def evaluate_on_example():
     example_dir = os.path.join(BASE_DIR, "example")
@@ -138,7 +162,7 @@ def evaluate_on_example():
             print(f"[WARNING] 이미지 로드 실패: {img_path}")
             pred = "Unknown"
         else:
-            pred = classify_image(img)
+            pred = classify_patch_by_rules(img)
 
         gt_labels.append(gt)
         pred_labels.append(pred)
@@ -154,7 +178,7 @@ def evaluate_on_example():
     print(f"Accuracy on example/: {acc:.2f}%")
 
 # ----------------------------------------------------
-# 3. test/ 에 대해 predict.csv 생성
+# 4. test/ 에 대해 predict.csv 생성
 # ----------------------------------------------------
 def generate_predict_for_test():
     test_dir = os.path.join(BASE_DIR, "test")
@@ -180,7 +204,7 @@ def generate_predict_for_test():
             print(f"[WARNING] 이미지 로드 실패: {img_path}")
             pred = "Good"    # 혹시라도 실패하면 기본값
         else:
-            pred = classify_image(img)
+            pred = classify_patch_by_rules(img)
 
         filenames.append(filename)
         preds.append(pred)
@@ -198,7 +222,7 @@ def generate_predict_for_test():
 
 
 # ----------------------------------------------------
-# 4. main
+# 5. main
 # ----------------------------------------------------
 if __name__ == "__main__":
     # 1) example/로 accuracy 확인
