@@ -102,7 +102,7 @@ def classify_patch_by_rules(img):
     출력: "Good" 또는 "Ungood"
     """
 
-    f = extract_features(img_rgb)
+    f = extract_features(img)
 
     tissue_ratio = f["tissue_ratio"]
     mean_s = f["mean_s"]
