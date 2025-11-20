@@ -12,7 +12,89 @@ import pandas as pd
 BASE_DIR = "dataset"
 
 # ----------------------------------------------------
-# 1. Rule-based Classifier
+# 1. Feature Extraction
+# ----------------------------------------------------
+import cv2
+import numpy as np
+
+def extract_features(img_bgr):
+    """
+    입력: BGR 이미지 (cv2.imread 결과)
+    출력: dict 형태의 특징 값들
+        {
+            "tissue_ratio": float,
+            "mean_s": float,
+            "mean_v": float,
+            "morph_ratio": float,
+            "dark_ratio": float,
+            "bright_ratio": float,
+        }
+    """
+
+    h_img, w_img = img_bgr.shape[:2]
+    total_pixels = h_img * w_img
+
+    # --- 1) BGR → HSV ---
+    hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+    h, s, v = cv2.split(hsv)
+
+    # --- 2) Tissue mask (조직 픽셀 추출) ---
+    #   - 채도(s)가 너무 낮으면 거의 흰 배경
+    #   - 밝기(v)가 너무 높으면 배경/글라스 쪽일 확률↑
+    #   → 적당한 기준으로 tissue 영역 정의
+    tissue_mask = (s > 30) & (v < 240)    # 필요하면 threshold 조정
+
+    tissue_pixels = int(tissue_mask.sum())
+    tissue_ratio = tissue_pixels / float(total_pixels)
+
+    # --- 3) mean S, mean V (조직 기준) ---
+    if tissue_pixels > 0:
+        mean_s = float(s[tissue_mask].mean())  # 0~255
+        mean_v = float(v[tissue_mask].mean())  # 0~255
+    else:
+        # 조직이 거의 없으면 전체 평균으로 fallback
+        mean_s = float(s.mean())
+        mean_v = float(v.mean())
+
+    # --- 4) Dark / Bright ratio (조직 내 밝기 분포) ---
+    # threshold는 대충 예시이므로 example 보고 튜닝하면 됨
+    if tissue_pixels > 0:
+        v_tissue = v[tissue_mask]
+
+        dark_threshold = 50      # V < 50 이면 매우 어두운 픽셀
+        bright_threshold = 210   # V > 210 이면 매우 밝은 픽셀
+
+        dark_ratio = float((v_tissue < dark_threshold).mean())
+        bright_ratio = float((v_tissue > bright_threshold).mean())
+    else:
+        dark_ratio = 0.0
+        bright_ratio = 0.0
+
+    # --- 5) Edge 기반 morphology 비율 (morph_ratio) ---
+    #   - Gray로 변환 후 Canny edge
+    #   - 조직 영역 내에서 edge가 차지하는 비율
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray, 50, 150)
+
+    if tissue_pixels > 0:
+        edge_in_tissue = np.logical_and(edges > 0, tissue_mask)
+        morph_ratio = float(edge_in_tissue.sum() / tissue_pixels)
+    else:
+        morph_ratio = 0.0
+
+    features = {
+        "tissue_ratio": tissue_ratio,
+        "mean_s": mean_s,
+        "mean_v": mean_v,
+        "morph_ratio": morph_ratio,
+        "dark_ratio": dark_ratio,
+        "bright_ratio": bright_ratio,
+    }
+
+    return features
+
+# ----------------------------------------------------
+# 2. Rule-based Classifier
 # ----------------------------------------------------
 def classify_image(img: np.ndarray) -> str:
     """
